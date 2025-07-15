@@ -50,8 +50,7 @@ def analyze_all(frame):
             leaflet_ranges = [(all_leaflet_points[i], all_leaflet_points[i+1])
                           for i in range(len(all_leaflet_points)-1)]
 
-        # Essentially, the midpoints here refer to the leaflet boundary in a bilayer while the midpoints are the middle bilayer boundaries. We do not find the values of the top mo
-st and bottom most layer and instead use inf
+        # Essentially, the midpoints here refer to the leaflet boundary in a bilayer while the midpoints are the middle bilayer boundaries. We do not find the values of the top most and bottom most layer and instead use inf
         # We just have to make sure that the kwargs (especially distance) used to calculate peaks are well defined otherwise we might get really close together.
         elif found_leaflets == 6:
             midpoints = (peaks[:-1] + peaks[1:]) *0.5
@@ -85,10 +84,10 @@ st and bottom most layer and instead use inf
             atomselection = "mhead2 oh1 oh2 oh3 oh4 oh5 amide chead head"
             atomselection = atomselection.split(' ')
             atoms = frame.select(names=atomselection)
-        else:
+        elif:
             atomselection = [13.0, 100.0]
             atoms = frame.select(mass_range=atomselection)
-            else:
+        elif:
             atomselection = [13.0, 100.0]
             atoms = frame.select(mass_range=atomselection)
         height = analysis.height.calc_height(frame, atoms)
