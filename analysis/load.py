@@ -80,9 +80,9 @@ def get_cg_residuename(residue):
             name = "ecer3"
     elif "oh2" in atoms:
         if "ter2" in atoms:
-            name = "ucer2"
+            name = "ucer9"
         else:
-            name = "ecer2"
+            name = "ecer9"
     elif "water" in atoms:
         name = "water"
     if name == None:
@@ -205,7 +205,7 @@ def load_from_pickle(filename):
 
 def load_from_trajectory(trajfile, topfile=None):
     if topfile:
-        traj = md.load(trajfile, top=topfile)
+        traj = md.load(trajfile, top=topfile)[-300:]
         print(
             "Loading trajectory from {} ".format(trajfile)
             + "and topology from {}".format(topfile)

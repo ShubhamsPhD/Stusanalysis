@@ -54,9 +54,9 @@ def calc_moi(coords, masses):
     I[0, 0] = np.sum((coords[:, 1] ** 2 + coords[:, 2] ** 2) * masses)
     I[1, 1] = np.sum((coords[:, 0] ** 2 + coords[:, 2] ** 2) * masses)
     I[2, 2] = np.sum((coords[:, 0] ** 2 + coords[:, 1] ** 2) * masses)
-    I[0, 1] = I[1, 0] = np.sum((coords[:, 0] * coords[:, 1]) * masses)
-    I[0, 2] = I[2, 0] = np.sum((coords[:, 0] * coords[:, 2]) * masses)
-    I[1, 2] = I[2, 1] = np.sum((coords[:, 1] * coords[:, 2]) * masses)
+    I[0, 1] = I[1, 0] = -1* np.sum((coords[:, 0] * coords[:, 1]) * masses)
+    I[0, 2] = I[2, 0] = -1* np.sum((coords[:, 0] * coords[:, 2]) * masses)
+    I[1, 2] = I[2, 1] = -1* np.sum((coords[:, 1] * coords[:, 2]) * masses)
     return I
 
 

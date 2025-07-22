@@ -50,7 +50,6 @@ def calc_all_directors(xyz, masses, residues):
         return [director, com]
 
     masses = np.array(masses)
-
     la_region_idxs = [la_region for residue in residues for la_region in residue.la_regions]
 
     results = [la_region_worker(atom_indices) for atom_indices in la_region_idxs]

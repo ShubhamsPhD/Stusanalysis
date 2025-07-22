@@ -10,21 +10,19 @@ from analysis.frame import Frame
 import copy as cp
 
 def analyze_all(frame):
-    # Prints frame number to terminal for each frame.
-    # Can be piped to a file and used to track progress
-
-
-    expected_leaflets = int(input("How many leaflets do we expect in this model?"))
     
-    tilt_all = [[] for _ in range(expected_leaflets)]  # Nested lists for tilt
-    s2_all = [[] for _ in range(expected_leaflets)]  # Nested lists for nematic order
-    apt_all = [[] for _ in range(expected_leaflets)]  # Nested lists for APT
-    height_all = [[] for _ in range(expected_leaflets/2)]  # Heights are between leaflets
-    apl_all = []
-
-    # Note: if you want to calculate properties for a particular layer,
-    # slice it out prior to running this function
-
+    results_per_frame = {}
+    # Setting how many peaks we require based upon leaflets in the system. Since we are finding peaks and leaflet positions based on the midpoints of the COM locations, this changes the number of peaks we require.
+    if frame.n_leaflets == 6:
+        needed_peaks = 4
+        hist_distance = 80 
+        hist_prominence =0
+    elif frame.n_leaflets == 4:
+        needed_peaks = 2
+    elif frame.n_leaflets == 2:
+        needed_peaks = 2
+        hist_distance = 15
+        hist_prominence = 5
     # Unpack inputs
     frame.validate_frame()
 
@@ -32,28 +30,42 @@ def analyze_all(frame):
     tail_info = analysis.utils.calc_all_directors(frame.xyz,
                                                   frame.masses,
                                                   frame.residuelist)
-
     directors = tail_info["directors"]
     coms = tail_info["coms"].squeeze()
 
     # Get the locations of each leaflet based on the
     # z_coord of the COMs
     z = coms[:,2]
-    peaks = analysis.height.calc_peaks(
+ 
+    peaks,hist = analysis.height.calc_peaks(
                 z, [np.min(z), np.max(z)],
-                n_layers=expected_leaflets,
-                threshold=[0, expected_leaflets]
-                )
-
-    found_leaflets = len(peaks) * 2 -2
-    if found_leaflets == n_leaflets:
-        # Get z-ranges encompassing each leaflet
-        midpoints = (peaks[:-1] + peaks[1:]) / 2
-        all_leaflet_points = np.concatenate((peaks, midpoints))
-        all_leaflet_points = np.sort(all_leaflet_points)
-        leaflet_ranges = [(leaflet_centers[i], leaflet_centers[i+1])
-                          for i in range(len(leaflet_centers)-1)]
+                n_layers=frame.n_leaflets,
+                prominence=hist_prominence,
+                distance=hist_distance)
+    
+    if len(peaks) == needed_peaks:
+        if len(peaks) == 2:
+            
+            # Here the midpoint between the 2 peaks shows the leaflet position.
+            midpoints = (peaks[:-1] + peaks[1:]) *0.5
+            all_leaflet_points = [-np.inf] + list(midpoints) + [np.inf]
+            all_leaflet_points = np.sort(all_leaflet_points)
+            leaflet_ranges = [(all_leaflet_points[i], all_leaflet_points[i+1])
+                          for i in range(len(all_leaflet_points)-1)]
         
+        # Essentially, the midpoints here refer to the leaflet boundary in a bilayer while the midpoints are the middle bilayer boundaries. We do not find the values of the top most and bottom most layer and instead use inf
+        # We just have to make sure that the kwargs (especially distance) used to calculate peaks are well defined otherwise we might get really close together.
+        elif len(peaks) == 4:
+            peaks_1 = peaks[1]
+            peaks_2 = peaks[2]
+
+            midpoints = (peaks[:-1] + peaks[1:]) *0.5
+            all_leaflet_points = np.concatenate(([-np.inf], midpoints, [peaks_1],[peaks_2], [np.inf]))
+            all_leaflet_points = np.sort(all_leaflet_points)
+            leaflet_ranges = [(all_leaflet_points[i], all_leaflet_points[i+1])
+                          for i in range(len(all_leaflet_points)-1)]
+        
+                    
         # Get the tilt angle and nematic order for each leaflet
         tilt = []
         s2 = []
@@ -63,26 +75,28 @@ def analyze_all(frame):
                                   coms[:,2] < lmax)
             leaflet_directors = directors[mask]
             leaflet_tilt = analysis.utils.calc_tilt_angle(leaflet_directors)
-            leaflet_apt = (frame.unitcell_lengths[0] * frame.unitcell_lengths[1] /
-                           np.sum(mask))
-            leaflet_s2 = analysis.utils.calc_order_parameter(leaflet_directors)
-            tilt.append(np.mean(leaflet_tilt))  # Taking an average of tilt values per leaflet since it will be easier to process later
-            s2.append(leaflet_s2)
-            apt.append(leaflet_apt)
+            filtered_leaflet_tilt = [angle for angle in leaflet_tilt if angle <= 60]
+            if filtered_leaflet_tilt:  # Ensure we have valid values
+                leaflet_apt = (frame.unitcell_lengths[0] * frame.unitcell_lengths[1] /
+                       np.sum(mask))
+                leaflet_s2 = analysis.utils.calc_order_parameter(leaflet_directors)
+        
+                tilt.append(np.mean(filtered_leaflet_tilt))  # Average valid tilt values
+                s2.append(leaflet_s2)
+                apt.append(leaflet_apt)
+            else:
+                # If no valid tilt values, append NaN
+                tilt.append(np.nan)
+                s2.append(np.nan)
+                apt.append(np.nan)
 
-        for i, t in enumerate(tilt):
-            tilt_all[i].append(t)
-            
-         # Append results per leaflet
-        for i, (s, a) in enumerate(zip(s2, apt)):
-            s2_all[i].append(s)
-            apt_all[i].append(a)
-    
+       
         # Calculate Area per Lipid: cross section / n_lipids
         apl = (frame.unitcell_lengths[0] * frame.unitcell_lengths[1] /
-                len(frame.residuelist) * expected_leaflets)
-        apl_all.append(apl)
-    
+                len(frame.residuelist) * frame.n_leaflets)
+        print(len(frame.residuelist)) 
+        print(frame.n_leaflets)
+        print(frame.unitcell_lengths[0])   
         # Calculate the height -- uses the "head" atoms specified below
         if frame.cg:
             atomselection = "mhead2 oh1 oh2 oh3 oh4 oh5 amide chead head"
@@ -92,32 +106,96 @@ def analyze_all(frame):
             atomselection = [13.0, 100.0]
             atoms = frame.select(mass_range=atomselection)
         height = analysis.height.calc_height(frame, atoms)
-        height_all.append(heights)
-
+        
+                
         results_per_frame = {'tilt' :  np.array(tilt),
                     's2' : s2,
                     'apl' : apl,
                     'apt' : np.array(apt),
                     'height' : np.array(height)}
-
-
-    # Finding averages 
-    avg_tilt = [np.mean(leaflet) for leaflet in tilt_all]
-    avg_s2 = [np.mean(leaflet) for leaflet in s2_all]
-    avg_apt = [np.mean(leaflet) for leaflet in apt_all]
-    avg_apl = np.mean(apl_all)
-    avg_height = (np.mean(height_all, axis = 0)
-
-    averages = {
-        "avg_tilt": avg_tilt,
-        "avg_s2": avg_s2,
-        "avg_apt": avg_apt,
-        "avg_apl": avg_apl,
-        "avg_height": avg_height,
-    }
-    print(averages)
-        
+        print(results_per_frame)
     return results_per_frame
+
+
+def calculate_averages_from_results(results):
+    """
+    Calculate averages from results loaded from the pickle file.
+
+    Parameters:
+    -----------
+    results : list
+        List of results dictionaries for each frame.
+
+    Returns:
+    --------
+    averages : dict
+        Dictionary of averaged properties across all frames.
+    """
+    # Initialize accumulators
+    tilt_all = []
+    s2_all = []
+    apt_all = []
+    apl_all = []
+    height_all = []
+
+
+    for frame_results in results:
+        if not frame_results:
+            continue  # Skip frames with invalid data
+        tilt_all.append(frame_results.get('tilt', []))  # Default to empty if missing
+        s2_all.append(frame_results.get('s2', []))
+        apt_all.append(frame_results.get('apt', []))
+        apl_all.append(frame_results.get('apl', np.nan))  # Default to NaN for scalar
+
+        height = frame_results.get('height', [])
+        
+        if not np.any(np.isnan(height)):  # This checks if there is any NaN in the height array
+            height_all.append(height)
+    if tilt_all:
+        # Safely compute max_len only if tilt_all is non-empty
+        max_len = max(len(x) for x in tilt_all if len(x) > 0)
+
+        tilt_all = [list(x) + [np.nan] * (max_len - len(x)) if len(x) > 0 else [np.nan] * max_len for x in tilt_all]
+        s2_all = [list(x) + [np.nan] * (max_len - len(x)) if len(x) > 0 else [np.nan] * max_len for x in s2_all]
+        apt_all = [list(x) + [np.nan] * (max_len - len(x)) if len(x) > 0 else [np.nan] * max_len for x in apt_all]       
+        
+    else:
+        # Handle case where tilt_all is empty
+        max_len = 0
+        tilt_all = []
+        s2_all = []
+        apt_all = []
+    # Calculate averages
+    avg_tilt = [np.nanmean(tilt) for tilt in zip(*tilt_all)] if tilt_all else []
+    error_tilt = [np.nanstd(tilt) for tilt in zip(*tilt_all)] if tilt_all else []
+
+    avg_s2 = [np.nanmean(s2) for s2 in zip(*s2_all)] if s2_all else []
+    error_s2 = [np.nanstd(s2) for s2 in zip(*s2_all)] if s2_all else []
+
+    avg_apt = [np.nanmean(apt) for apt in zip(*apt_all)] if apt_all else []
+    error_apt = [np.nanstd(apt) for apt in zip(*apt_all)] if apt_all else []
+
+    avg_apl = np.nanmean(apl_all) if apl_all else np.nan
+    error_apl = np.nanstd(apl_all) if apl_all else np.nan
+
+    avg_height = np.nanmean(height_all, axis=0) if height_all else []
+    error_height = np.nanstd(height_all, axis=0) if height_all else []
+    
+    
+
+    return {
+        "avg_tilt": avg_tilt,
+        "err_tilt": error_tilt,
+        "avg_s2": avg_s2,
+        "err_s2": error_s2,
+        "avg_apt": avg_apt,
+        "err_apt": error_apt,
+        "avg_apl": avg_apl,
+        "err_apl": error_apl,
+        "avg_height": avg_height,
+        "err_height": error_height,
+    }
+
 
 def main():
     ## PARSING INPUTS
@@ -237,5 +315,11 @@ def main():
     with open('{}/results.p'.format(outputdir), 'wb') as f:
         pickle.dump(results, f)
     print('Finished!')
+    
+    averages = calculate_averages_from_results(results)
+    print("Final Averages:")
+    print(averages)
+
 
 if __name__ == "__main__": main()
+
